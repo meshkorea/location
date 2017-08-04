@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Geo Locator</title>
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+  <style>
+    #app {
+      margin-top: 3em;
+      margin-bottom: 3em;
+    }
+    .map_wrap {
+      position:relative;
+      width:100%;
+      height:480px;
+    }
+    #map {
+      width:100%;
+      height:100%;
+      position:relative;
+      overflow:hidden;
+    }
+    .alert {
+      display: block;
+      position: fixed;
+      bottom: 3em;
+      right: 3em;
+      max-width: 100%;
+      opacity: .8;
+      z-index: 999;
+    }
+  </style>
+</head>
+<body>
+  <div id="app" class="container">
+    <div class="alert alert-danger alert-dismissible" role="alert" v-show="showError" style="display: none;">
+      <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+        <span aria-hidden="true">&times;</span></button>
+      <strong>Error!</strong> {{ errorMessage }}
+    </div>
+    <div class="row">
+      <h1 class="page-header">주소/좌표로 위치 확인하기</h1>
+      <ul>
+        <li>입력창에 주소 또는 좌표를 입력하고 엔터를 눌러 지도상의 위치를 확인할 수 있습니다.</li>
+        <li>반대로 마우스로 지도상의 위치를 클릭하여 주소 또는 좌표를 확인할 수 있습니다.</li>
+        <li>건물이 있는 위치를 클릭했을 때만 도로명을 확인할 수 있습니다.</li>
+      </ul>
+    </div>
+    <div class="row">
+      <form class="form-horizontal">
+        <div class="form-group col-md-6">
+          <input type="text"
+                 name="address"
+                 v-model="address"
+                 @keyup.enter="updateByAddress"
+                 class="form-control"
+                 placeholder="주소를 입력해 주세요."
+          >
+        </div>
+        <div class="form-group col-md-6">
+          <input type="text"
+                 name="coordsStr"
+                 v-model="coordsStr"
+                 @keyup.enter="updateByCoords"
+                 class="form-control"
+                 placeholder="좌표를 입력해 주세요."
+          >
+        </div>
+      </form>
+    </div>
+    <div class="row">
+      <p class="help-block">도로명주소: {{ roadAddress }}</p>
+    </div>
+    <div class="row">
+      <div class="panel panel-default">
+        <div class="map_wrap pannel-body">
+          <div id="map"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!--이 API Key는 Daum Maps API Console에 localhost:8080으로 등록되어있습니다.-->
+  <!--@see http://apis.map.daum.net/-->
+  <script src="http://dapi.kakao.com/v2/maps/sdk.js?appkey=54c1ae5148c29bd5e63cc139cca0fd50&libraries=services"></script>
+
+  <!--<script src="http://unpkg.com/vue" crossorigin="anonymous"></script>-->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.4.2/vue.min.js"></script>
+
+  <script>
+    const geocoder = new daum.maps.services.Geocoder();
+    let map;
+    let marker;
+    let latLng;
+
+    let vm = new Vue({
+      el: "#app",
+
+      data: {
+        address: "서울특별시 중구 서소문동 38",
+        roadAddress: "서울특별시 중구 서소문동 38",
+        coords: [37.564493, 126.975616],
+        showError: false,
+        errorMessage: "알 수 없는 오류가 발생했습니다."
+      },
+
+      methods: {
+        updateByAddress() {
+          // 주소로 지오코드한 후 지도를 업데이트합니다.
+          const self = this;
+
+          geocoder.addressSearch(self.address, (result, status) => {
+            if (status === daum.maps.services.Status.OK) {
+              self.coords = [result[0].y, result[0].x];
+              self.roadAddress = result[0].road_address ? result[0].road_address.address_name : "";
+              latLng = new daum.maps.LatLng(result[0].y, result[0].x);
+              map.setCenter(latLng);
+              marker.setPosition(latLng);
+            } else {
+              self.handleError("주소 검색에 실패했습니다: " + status);
+            }
+          });
+        },
+
+        updateByCoords() {
+          // 좌표로 역지오코드한 후 지도를 업데이트합니다.
+          const self = this;
+          latLng = new daum.maps.LatLng(self.coords[0], self.coords[1]);
+
+          geocoder.coord2Address(self.coords[1], self.coords[0], (result, status) => {
+            if (status === daum.maps.services.Status.OK) {
+              self.address = result[0].address ? result[0].address.address_name : "";
+              self.roadAddress = result[0].road_address ? result[0].road_address.address_name : "";
+              map.setCenter(latLng);
+              marker.setPosition(latLng);
+            } else {
+              self.handleError("좌표 검색에 실패했습니다: " + status);
+            }
+          });
+        },
+
+        handleError(errorMessage) {
+          const self = this;
+
+          window.setTimeout(() => {
+            self.showError = false;
+          }, 3000);
+
+          self.errorMessage = errorMessage;
+          self.showError = true;
+        }
+      },
+
+      computed: {
+        coordsStr: {
+          get() {
+            return this.coords.join(",");
+          },
+          set(value) {
+            this.coords = value.split(",").map((item) => {
+              return item.trim();
+            });
+          }
+        }
+      },
+
+      mounted() {
+        window.setTimeout(() => {
+          // 1초 지연을 줘서 Vue가 완전히 준비된 후 지도를 그리도록 합니다.
+          const mapContainer = document.querySelector("div#map");
+          latLng = new daum.maps.LatLng(vm.coords[0], vm.coords[1]);
+          map = new daum.maps.Map(mapContainer, {
+            center: latLng,
+            level: 3
+          });
+          marker = new daum.maps.Marker({
+            map: map,
+            position: latLng
+          });
+
+          daum.maps.event.addListener(map, 'click', (evt) => {
+            // 클릭 이벤트 리스너를 등록합니다. 마우스 클릭으로 지도를 네비게이션할 때 주소와 좌표를 업데이트합니다.
+            latLng = new daum.maps.LatLng(evt.latLng.getLat(), evt.latLng.getLng());
+            vm.coords = [evt.latLng.getLat(), evt.latLng.getLng()];
+
+            vm.updateByCoords();
+          });
+        }, 1000);
+      }
+    });
+  </script>
+</body>
+</html>
