@@ -27,7 +27,15 @@
       max-width: 100%;
       opacity: .8;
       z-index: 999;
+    }/*
+    .input-group .btn {
+      margin-left: -1px;
+      border-top-left-radius: 0;
+      border-bottom-left-radius: 0;
     }
+    .input-group input, button {
+      display: table-cell;
+    }*/
   </style>
 </head>
 <body>
@@ -47,7 +55,7 @@
     </div>
     <div class="row">
       <form class="form-horizontal">
-        <div class="form-group col-md-6">
+        <div class="form-group col-md-4">
           <input type="text"
                  name="address"
                  v-model="address"
@@ -56,7 +64,7 @@
                  placeholder="주소를 입력해 주세요."
           >
         </div>
-        <div class="form-group col-md-6">
+        <div class="form-group col-md-4">
           <input type="text"
                  name="coordsStr"
                  v-model="coordsStr"
@@ -64,6 +72,22 @@
                  class="form-control"
                  placeholder="좌표를 입력해 주세요."
           >
+        </div>
+        <div class="form-group col-md-4">
+          <div class="input-group">
+            <input type="text"
+                   id="shareableUrl"
+                   v-model="shareableUrl"
+                   class="form-control"
+                   placeholder="현재 위치를 공유할 수 있는 URL입니다."
+            >
+            <span class="input-group-btn">
+              <button type="button" class="btn" data-clipboard-target="#shareableUrl">
+                <span class="glyphicon glyphicon-copy"></span>
+              </button>
+            </span>
+
+          </div>
         </div>
       </form>
     </div>
@@ -82,12 +106,12 @@
   <!--이 API Key는 Daum Maps API Console에 localhost:8080으로 등록되어있습니다.-->
   <!--@see http://apis.map.daum.net/-->
   <script src="http://dapi.kakao.com/v2/maps/sdk.js?appkey=54c1ae5148c29bd5e63cc139cca0fd50&libraries=services"></script>
-
-  <!--<script src="http://unpkg.com/vue" crossorigin="anonymous"></script>-->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.4.2/vue.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/1.7.1/clipboard.min.js"></script>
 
   <script>
     const geocoder = new daum.maps.services.Geocoder();
+    let urlParser = document.createElement("a");
     let map;
     let marker;
     let latLng;
@@ -100,7 +124,7 @@
         roadAddress: "서울특별시 중구 서소문동 38",
         coords: [37.564493, 126.975616],
         showError: false,
-        errorMessage: "알 수 없는 오류가 발생했습니다."
+        errorMessage: "알 수 없는 오류가 발생했습니다.",
       },
 
       methods: {
@@ -147,6 +171,29 @@
 
           self.errorMessage = errorMessage;
           self.showError = true;
+        },
+
+        setCoordsFromQueryStringIfAny() {
+          const queryString = window.location.search.substring(1);
+
+          if (queryString.length === 0) {
+            return;
+          }
+
+          const queries = queryString.match(/lat=([0-9]+\.[0-9]+)&lng=([0-9]+\.[0-9]+)/);
+
+          if (queries === null || queries.length < 3) {
+            // queryes = ["lat=37.566&lng=126.975", "37.566", "126.975"];
+            // Both lat, lng are required.
+            this.handleError("주소에 포함된 위경도 형식이 틀립니다: " + queryString);
+            return;
+          }
+
+          this.coords = [parseFloat(queries[1]), parseFloat(queries[2])];
+        },
+
+        initClipboard() {
+          return new Clipboard(".btn");
         }
       },
 
@@ -160,13 +207,27 @@
               return item.trim();
             });
           }
+        },
+
+        shareableUrl() {
+          urlParser.href = window.location.href;
+          const port = (urlParser.port.length > 0) ? ":" + urlParser.port : "";
+
+          return urlParser.protocol + "//" + urlParser.hostname + port
+            + "?lat=" + this.coords[0] + "&lng=" + this.coords[1];
         }
       },
 
       mounted() {
+        let clipboard = this.initClipboard();
+
         window.setTimeout(() => {
           // 1초 지연을 줘서 Vue가 완전히 준비된 후 지도를 그리도록 합니다.
           const mapContainer = document.querySelector("div#map");
+
+          // 쿼리스트링에 좌표가 포함되어 있다면, 지도 중앙 위치를 변경합니다.
+          vm.setCoordsFromQueryStringIfAny();
+
           latLng = new daum.maps.LatLng(vm.coords[0], vm.coords[1]);
           map = new daum.maps.Map(mapContainer, {
             center: latLng,
